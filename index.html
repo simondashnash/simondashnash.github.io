@@ -135,7 +135,7 @@
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `hospital_survey_${new Date().getTime()}.json`;
+        a.download = `survey_${new Date().getTime()}.json`;
         a.click();
     }
 </script>
