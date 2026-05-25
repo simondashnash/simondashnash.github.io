@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hospital Radio Mapper</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        #map { height: 70vh; width: 100vw; }
+        #controls { height: 30vh; padding: 10px; background: #f8f9fa; overflow-y: auto; }
+        .btn { padding: 12px; margin: 5px; border: none; border-radius: 5px; color: white; font-weight: bold; }
+        .blue { background: #007bff; } .green { background: #28a745; } .red { background: #dc3545; }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="controls">
+    <strong>Floor:</strong> 
+    <select id="floorSelect">
+        <option value="1">Level 1 (X-Ray)</option>
+        <option value="2">Level 2</option>
+    </select>
+    <button class="btn blue" onclick="startBLEScan()">1. Enable Bluetooth</button>
+    <button class="btn green" onclick="downloadData()">2. Export Survey JSON</button>
+    <div id="status">Status: Waiting for Bluetooth...</div>
+    <div id="log">Logs appear here...</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // --- MAP SETUP ---
+    // Coordinates for your hospital - change these!
+    const map = L.map('map').setView([51.505, -0.09], 18); 
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 21,
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    let surveyData = [];
+    let currentPos = null;
+    let tempMarker = L.circleMarker([0,0], {color: 'red', radius: 10}).addTo(map);
+
+    // Click on map to set "I am here"
+    map.on('click', function(e) {
+        currentPos = e.latlng;
+        tempMarker.setLatLng(currentPos);
+        document.getElementById('status').innerText = `Location Set: ${currentPos.lat.toFixed(5)}, ${currentPos.lng.toFixed(5)}`;
+        recordMeasurement(); 
+    });
+
+    // --- BLUETOOTH LOGIC ---
+    let bleScan = null;
+
+    async function startBLEScan() {
+        try {
+            // Browsers require a user gesture to start scanning
+            const scan = await navigator.bluetooth.requestLEScan({
+                keepRepeatedDevices: true,
+                acceptAllAdvertisements: true
+            });
+            
+            document.getElementById('status').innerText = "Scanning Active. Tap map to record.";
+            
+            navigator.bluetooth.addEventListener('advertisementreceived', event => {
+                lastSeenDevices.set(event.device.id || event.device.address, {
+                    name: event.device.name || "Unknown",
+                    rssi: event.rssi,
+                    ts: Date.now()
+                });
+            });
+        } catch (error) {
+            alert("Bluetooth Error: " + error);
+        }
+    }
+
+    let lastSeenDevices = new Map();
+
+    function recordMeasurement() {
+        if (!currentPos) return;
+
+        const floor = document.getElementById('floorSelect').value;
+        const entry = {
+            lat: currentPos.lat,
+            lng: currentPos.lng,
+            floor: floor,
+            timestamp: new Date().toISOString(),
+            signals: Array.from(lastSeenDevices.values())
+        };
+
+        surveyData.push(entry);
+        
+        // Visual feedback
+        L.circle(currentPos, {radius: 1, color: 'blue'}).addTo(map);
+        document.getElementById('log').innerHTML = `Recorded ${entry.signals.length} devices at this spot.<br>` + document.getElementById('log').innerHTML;
+        
+        // Clear local buffer for next spot
+        lastSeenDevices.clear();
+    }
+
+    function downloadData() {
+        const blob = new Blob([JSON.stringify(surveyData, null, 2)], {type : 'application/json'});
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `hospital_survey_${new Date().getTime()}.json`;
+        a.click();
+    }
+</script>
+</body>
+</html>
