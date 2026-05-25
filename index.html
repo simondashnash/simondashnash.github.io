@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Hospital Radio Mapper</title>
+    <title>Radio Mapper</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
@@ -16,9 +16,10 @@
 
 <div id="map"></div>
 <div id="controls">
+    <button class="btn blue" onclick="findMe()">0. Find My Starting Point</button>
     <strong>Floor:</strong> 
     <select id="floorSelect">
-        <option value="1">Level 1 (X-Ray)</option>
+        <option value="1">Level 1 </option>
         <option value="2">Level 2</option>
     </select>
     <button class="btn blue" onclick="startBLEScan()">1. Enable Bluetooth</button>
@@ -30,8 +31,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     // --- MAP SETUP ---
-    // Coordinates for your hospital - change these!
-    const map = L.map('map').setView([51.505, -0.09], 18); 
+    const map = L.map('map').setView([0, 0], 2); 
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 21,
         attribution: '© OpenStreetMap'
@@ -39,8 +40,39 @@
 
     let surveyData = [];
     let currentPos = null;
+    let lastSeenDevices = new Map();
     let tempMarker = L.circleMarker([0,0], {color: 'red', radius: 10}).addTo(map);
 
+    // help centre map on user device location
+    function findMe() {
+        document.getElementById('status').innerText = "Locating via system api";
+        map.locate({
+            setView: true, 
+            maxZoom: 18, 
+            enableHighAccuracy: true
+        });
+    }
+
+    // This runs automatically when map.locate() succeeds
+    map.on('locationfound', function(e) {
+        currentPos = e.latlng; 
+        tempMarker.setLatLng(currentPos);
+        
+        // blue accuracy circle
+        L.circle(e.latlng, e.accuracy / 2, {
+            color: '#3388ff',
+            fillOpacity: 0.1,
+            dashArray: '5, 5'
+        }).addTo(map);
+
+        document.getElementById('status').innerText = "Found! Tap map to refine precisely.";
+    });
+
+    map.on('locationerror', function(e) {
+        alert("GPS Error: " + e.message);
+    });
+
+    // This is to let user specify exact location  manually
     // Click on map to set "I am here"
     map.on('click', function(e) {
         currentPos = e.latlng;
@@ -74,7 +106,7 @@
         }
     }
 
-    let lastSeenDevices = new Map();
+ //   let lastSeenDevices = new Map();
 
     function recordMeasurement() {
         if (!currentPos) return;
