@@ -74,15 +74,26 @@
             });
             document.getElementById('status').innerText = "Scan Active!";
             
-            navigator.bluetooth.addEventListener('advertisementreceived', event => {
-                const devId = event.device.address || event.device.id || event.device.name;
-                lastSeenDevices.set(devId, {
-                    name: event.device.name || "Unknown",
-                    rssi: event.rssi,
-                    ts: Date.now()
-                });
-                document.getElementById('count').innerText = "Devices: " + lastSeenDevices.size;
+    navigator.bluetooth.addEventListener('advertisementreceived', event => {
+        // 1. Try to find the most 'unique' identifier available
+        // address is the MAC, id is a browser-generated UUID
+        const devId = event.device.address || event.device.id;
+        const devName = event.device.name || "Unknown";
+    
+        // 2. Only log it if we actually found an ID 
+        if (devId) {
+            lastSeenDevices.set(devId, {
+                id: devId,
+                name: devName,
+                rssi: event.rssi,
+                ts: Date.now(),
+                // Adding txPower can help with distance math later
+                txPower: event.txPower || "N/A" 
             });
+    }
+
+    document.getElementById('count').innerText = "Unique IDs: " + lastSeenDevices.size;
+});
         } catch (err) {
             alert("BLE Error: " + err);
         }
