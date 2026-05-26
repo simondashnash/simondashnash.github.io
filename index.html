@@ -1,36 +1,47 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Radio Mapper</title>
+    <title Radio Mapper</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; }
-        #map { height: 70vh; width: 100vw; }
-        #controls { height: 30vh; padding: 10px; background: #f8f9fa; overflow-y: auto; }
-        .btn { padding: 12px; margin: 5px; border: none; border-radius: 5px; color: white; font-weight: bold; }
-        .blue { background: #007bff; } .green { background: #28a745; } .red { background: #dc3545; }
+        body { margin: 0; padding: 0; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; }
+        #map { flex-grow: 1; width: 100vw; }
+        #controls { height: 35vh; padding: 15px; background: #f8f9fa; border-top: 2px solid #ccc; overflow-y: auto; }
+        .btn { padding: 12px; margin: 5px 2px; border: none; border-radius: 5px; color: white; font-weight: bold; cursor: pointer; }
+        .blue { background: #007bff; } 
+        .green { background: #28a745; } 
+        .status-box { margin-top: 10px; padding: 8px; background: #eee; border-radius: 4px; font-size: 0.9em; }
+        #log { font-family: monospace; font-size: 0.8em; margin-top: 10px; color: #444; }
     </style>
 </head>
 <body>
 
 <div id="map"></div>
 <div id="controls">
-    <button class="btn blue" onclick="findMe()">0. Find My Starting Point</button>
-    <strong>Floor:</strong> 
-    <select id="floorSelect">
-        <option value="1">Level 1 </option>
-        <option value="2">Level 2</option>
-    </select>
+    <button class="btn blue" onclick="findMe()">0. Center Map (GPS)</button>
     <button class="btn blue" onclick="startBLEScan()">1. Enable Bluetooth</button>
     <button class="btn green" onclick="downloadData()">2. Export Survey JSON</button>
-    <div id="status">Status: Waiting for Bluetooth...</div>
-    <div id="log">Logs appear here...</div>
+    
+    <div style="margin-top:10px;">
+        <strong>Floor:</strong> 
+        <select id="floorSelect" style="padding: 5px;">
+            <option value="1">Level 1 (X-Ray)</option>
+            <option value="2">Level 2</option>
+        </select>
+    </div>
+
+    <div class="status-box">
+        <div id="status">Status: Waiting for user...</div>
+        <div id="count">Devices in buffer: 0</div>
+    </div>
+    <div id="log">Logs: Tap map to record points.</div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // --- MAP SETUP ---
+    // --- 1. INITIALIZE MAP ---
+    // Starting at 0,0 - findMe() will move this to your hospital
     const map = L.map('map').setView([0, 0], 2); 
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -38,78 +49,84 @@
         attribution: '© OpenStreetMap'
     }).addTo(map);
 
+    // --- 2. GLOBAL VARIABLES ---
     let surveyData = [];
     let currentPos = null;
     let lastSeenDevices = new Map();
-    let tempMarker = L.circleMarker([0,0], {color: 'red', radius: 10}).addTo(map);
+    let tempMarker = L.circleMarker([0,0], {color: 'red', radius: 10, fillOpacity: 0.8}).addTo(map);
 
-    // help centre map on user device location
+    // --- 3. GEOLOCATION LOGIC ---
     function findMe() {
-        document.getElementById('status').innerText = "Locating via system api";
-        map.locate({
-            setView: true, 
-            maxZoom: 18, 
-            enableHighAccuracy: true
-        });
+        document.getElementById('status').innerText = "Locating via System API...";
+        map.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true });
     }
 
-    // This runs automatically when map.locate() succeeds
     map.on('locationfound', function(e) {
         currentPos = e.latlng; 
         tempMarker.setLatLng(currentPos);
-        
-        // blue accuracy circle
-        L.circle(e.latlng, e.accuracy / 2, {
-            color: '#3388ff',
-            fillOpacity: 0.1,
-            dashArray: '5, 5'
-        }).addTo(map);
-
-        document.getElementById('status').innerText = "Found! Tap map to refine precisely.";
+        L.circle(e.latlng, e.accuracy / 2, { color: '#3388ff', fillOpacity: 0.1 }).addTo(map);
+        document.getElementById('status').innerText = "GPS Fixed. Tap map to refine.";
     });
 
     map.on('locationerror', function(e) {
-        alert("GPS Error: " + e.message);
+        alert("GPS Error: " + e.message + ". Please tap map manually.");
     });
 
-    // This is to let user specify exact location  manually
-    // Click on map to set "I am here"
+    // --- 4. MAP INTERACTION (Recording) ---
     map.on('click', function(e) {
         currentPos = e.latlng;
         tempMarker.setLatLng(currentPos);
-        document.getElementById('status').innerText = `Location Set: ${currentPos.lat.toFixed(5)}, ${currentPos.lng.toFixed(5)}`;
+        document.getElementById('status').innerText = `Point Set: ${currentPos.lat.toFixed(5)}, ${currentPos.lng.toFixed(5)}`;
         recordMeasurement(); 
     });
 
-    // --- BLUETOOTH LOGIC ---
-    let bleScan = null;
-
+    // --- 5. BLUETOOTH SNIFFER LOGIC ---
     async function startBLEScan() {
         try {
-            // Browsers require a user gesture to start scanning
+            document.getElementById('status').innerText = "Requesting Scan Permission...";
+            
+            // Note: acceptAllAdvertisements requires Chrome Flag "Experimental Web Platform Features"
             const scan = await navigator.bluetooth.requestLEScan({
                 keepRepeatedDevices: true,
                 acceptAllAdvertisements: true
             });
             
-            document.getElementById('status').innerText = "Scanning Active. Tap map to record.";
+            document.getElementById('status').innerText = "Sniffer Active! Wait for devices...";
             
             navigator.bluetooth.addEventListener('advertisementreceived', event => {
-                lastSeenDevices.set(event.device.id || event.device.address, {
-                    name: event.device.name || "Unknown",
+                // GrapheneOS/Android Fix: Use address or name as key to ensure uniqueness
+                const deviceKey = event.device.address || event.device.id || event.device.name || "unknown";
+                
+                lastSeenDevices.set(deviceKey, {
+                    name: event.device.name || "Unnamed Device",
                     rssi: event.rssi,
+                    id: event.device.id,
+                    address: event.device.address,
                     ts: Date.now()
                 });
+
+                document.getElementById('count').innerText = `Devices in buffer: ${lastSeenDevices.size}`;
             });
+
         } catch (error) {
-            alert("Bluetooth Error: " + error);
+            console.error(error);
+            alert("Bluetooth Error: " + error.name + " - " + error.message);
         }
     }
 
- //   let lastSeenDevices = new Map();
-
+    // --- 6. DATA CAPTURE & EXPORT ---
     function recordMeasurement() {
-        if (!currentPos) return;
+        if (!currentPos) {
+            alert("Set location on map first!");
+            return;
+        }
+
+        const signals = Array.from(lastSeenDevices.values());
+        
+        if (signals.length === 0) {
+            document.getElementById('log').innerHTML = "<b>Warning:</b> No Bluetooth data yet. Waiting...<br>" + document.getElementById('log').innerHTML;
+            return;
+        }
 
         const floor = document.getElementById('floorSelect').value;
         const entry = {
@@ -117,27 +134,36 @@
             lng: currentPos.lng,
             floor: floor,
             timestamp: new Date().toISOString(),
-            signals: Array.from(lastSeenDevices.values())
+            signals: signals
         };
 
         surveyData.push(entry);
         
-        // Visual feedback
-        L.circle(currentPos, {radius: 1, color: 'blue'}).addTo(map);
-        document.getElementById('log').innerHTML = `Recorded ${entry.signals.length} devices at this spot.<br>` + document.getElementById('log').innerHTML;
+        // Visual feedback on map
+        L.circle(currentPos, {radius: 2, color: 'blue', weight: 2, fillOpacity: 0.4}).addTo(map);
         
-        // Clear local buffer for next spot
-        lastSeenDevices.clear();
+        // Update log
+        document.getElementById('log').innerHTML = `<b>Saved!</b> Floor ${floor}: Found ${signals.length} signals.<br>` + document.getElementById('log').innerHTML;
+        
+        // We DO NOT clear lastSeenDevices here to allow a rolling 
+        // average of beacons as you walk the hallway.
     }
 
     function downloadData() {
-        const blob = new Blob([JSON.stringify(surveyData, null, 2)], {type : 'application/json'});
+        if (surveyData.length === 0) {
+            alert("No data points recorded yet!");
+            return;
+        }
+        const dataStr = JSON.stringify(surveyData, null, 2);
+        const blob = new Blob([dataStr], {type : 'application/json'});
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `survey_${new Date().getTime()}.json`;
+        a.download = `hospital_survey_${Math.floor(Date.now()/1000)}.json`;
         a.click();
+        window.URL.revokeObjectURL(url);
     }
 </script>
+
 </body>
 </html>
