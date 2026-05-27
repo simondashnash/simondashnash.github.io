@@ -178,15 +178,32 @@
             });
             document.getElementById('status').innerText = "Sniffer Active!";
             
-            navigator.bluetooth.addEventListener('advertisementreceived', event => {
-                const devId = event.device.address || event.device.id || event.device.name;
-                lastSeenDevices.set(devId, {
-                    name: event.device.name || "Unknown",
-                    rssi: event.rssi,
-                    ts: Date.now()
-                });
-                document.getElementById('count').innerText = `Signals in Buffer: ${lastSeenDevices.size}`;
-            });
+    navigator.bluetooth.addEventListener('advertisementreceived', event => {
+        // 1. Capture every possible identifier
+        const devAddress = event.device.address || "Blocked";
+        const devId = event.device.id || "No_ID";
+        const devName = event.device.name || "Unknown";
+    
+        // 2. Create a composite key to ensure we don't miss anything
+        // If the address is blocked, the ID becomes our primary key
+        const storageKey = devAddress !== "Blocked" ? devAddress : devId;
+    
+        lastSeenDevices.set(storageKey, {
+            address: devAddress,   // The Hardware MAC (if the browser allows it)
+            id: devId,             // The Browser's UUID alias
+            name: devName,         // The broadcasted SSID/Name
+            rssi: event.rssi,      // Signal strength
+            ts: Date.now(),        // Precise timestamp
+            
+            // 3. Advanced Metadata (The 'Fingerprint')
+            // These often reveal the manufacturer (Cisco/Aruba) even if the name is unknown
+            txPower: event.txPower || "N/A",
+            appearance: event.device.appearance || "N/A",
+            uuids: event.uuids ? event.uuids.toString() : "none"
+        });
+
+    document.getElementById('count').innerText = `Unique Devices: ${lastSeenDevices.size}`;
+});
         } catch (err) {
             alert("Bluetooth Scan Error: " + err);
         }
