@@ -21,11 +21,12 @@
     <button class="btn blue" onclick="findMe()">0. GPS Center</button>
     <button class="btn blue" onclick="startBLEScan()">1. Enable BLE</button>
     <button class="btn green" onclick="downloadData()">2. Export JSON</button>
+    <input type="text" id="poiName" placeholder="Ward name / POI (optional)" style="padding: 10px; width: 80%;">
     
     <div style="margin: 10px 0;">
         <strong>Floor:</strong> 
         <select id="floorSelect">
-            <option value="1">Level 1 (X-Ray)</option>
+            <option value="1">Level 1</option>
             <option value="2">Level 2</option>
         </select>
     </div>
@@ -102,16 +103,22 @@
     // --- 5. DATA ---
     function recordMeasurement() {
         if (!currentPos) return;
+        const poi = document.getElementById('poiName').value;
         const signals = Array.from(lastSeenDevices.values());
         const entry = {
             lat: currentPos.lat,
             lng: currentPos.lng,
             floor: document.getElementById('floorSelect').value,
+            poi: poi || "Point", // If empty
             signals: signals
         };
         surveyData.push(entry);
-        L.circle(currentPos, {radius: 2, color: 'blue'}).addTo(map);
+        const color = poi ? 'red' : 'blue';
+        L.circle(currentPos, {radius: 2, color: color}).addTo(map);
         document.getElementById('log').innerText = "Saved point with " + signals.size + " signals.";
+        // Clear the input for the next point
+        document.getElementById('poiName').value = "";
+        document.getElementById('status').innerText = `Saved: ${poi || "Coordinate"}`;
     }
 
     function downloadData() {
