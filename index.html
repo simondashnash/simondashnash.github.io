@@ -125,22 +125,21 @@
 
         const selectedFloor = document.getElementById('floorSelect').value;
 
-        vectorLayer = L.geoJSON(hospitalGeoJSON, {
-            filter: (f) => f.properties.level == selectedFloor,
-            style: (f) => ({
-                fillColor: f.properties.level == "2" ? "#3498db" : "#2ecc71",
-                color: "#2c3e50",
-                weight: 2,
-                fillOpacity: 0.4
-            }),
-            onEachFeature: (feature, layer) => {
-                if (feature.properties && feature.properties.name) {
-                    layer.bindTooltip(feature.properties.name, {
-                        permanent: true, direction: 'center', className: 'room-label'
-                    });
-                }
-            }
-        }).addTo(map);
+    vectorLayer = L.geoJSON(hospitalGeoJSON, {
+        filter: (f) => {
+            const selected = document.getElementById('floorSelect').value;
+            const levelData = f.properties['building:levels'] || f.properties['level'];
+            // If no level is defined, show it anyway so we don't have a blank map
+            return !levelData || levelData == selected;
+        },
+        style: (f) => ({
+            fillColor: "#2ecc71",
+            color: "#2c3e50",
+            weight: 2,
+            fillOpacity: 0.5,
+            interactive: true // Ensure clicks are caught
+        })
+    }).addTo(map);
 
         // Center map on the building data automatically
         if (hospitalGeoJSON.features.length > 0 && vectorLayer.getBounds().isValid()) {
